@@ -1,13 +1,20 @@
-# Streamlit on Docker
+# Crypto portfolio evaluation and exploration with Streamlit
 
-## Run Streamlit
+## APIs consumed
+- uphold for assets and tickers
+- CryptoCompare for historical prices
 
-### Run the main script
+## CryptoCompare API-KEY setup
 
-Run `docker-compose up` to run `src/main.py` in Streamlit.
+  - Set up an api-key with CryptoCompare
+  - Activate the google-cloud-secret-manager api and create a secret key
+  - Add the secret key to your image
+  - Provide the path to the secret key file through the `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+  - Upload it as a secret using google-cloud-secret-manager
+  - Provision the secret name as `SECRET_NAME` environment variable
 
-then open [localhost:8501/?name=main](http://localhost:8501/?name=main) in your browser. 
+## Streamlit file
 
-## Format
+  - Add any streamlit files to your image in the `src` directory
+  - Define the file to be run through the `DASHBOARD_FILE` environment variable
 
-Run `docker-compose run streamlit black src/`

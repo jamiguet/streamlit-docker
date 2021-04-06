@@ -1,4 +1,4 @@
 streamlit
-black
-altair
-vega-datasets
+pandas
+google-cloud-secret-manager
+requests
