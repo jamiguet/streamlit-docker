@@ -41,65 +41,78 @@ def fetch_asset_list():
     return sorted([item['code'] for item in ticker_json if item['type'] in ['cryptocurrency', 'utility_token']])
 
 
-st.title('Crypto portfolio valuation and exploration')
+def build_portfolio():
+    if portfolio_name == 'explore':
+        base_investment = float(
+            st.sidebar.slider('Investment CHF/asset: ', 100, 5000, 500, 100))
+        asset_list = fetch_asset_list()
+        monitoring = ('BTC', 'DOGE', 'XRP', 'ETH', 'LTC', 'DOT', 'SOL')
+        exploratory_assets = st.sidebar.multiselect('Select assets', asset_list, default=monitoring)
+        portfolio_open_date = st.sidebar.date_input('Portfolio opening date:')
+        portfolio = pd.DataFrame()
+        if len(exploratory_assets) == 0:
+            st.stop()
+        for asset in exploratory_assets:
+            instrument_name = f"{asset}-CHF"
+            quote = fetch_historical_quote(instrument_name, portfolio_open_date)
+            if float(quote[asset]['CHF']) == 0:
+                st.text(f"No historical data available for {asset}")
+                continue
+            portfolio = portfolio.append(
+                pd.DataFrame({'amount': base_investment / float(quote[asset]['CHF']), 'value': base_investment,
+                              'direction': 'long'}, index=[instrument_name]))
 
-if st.experimental_get_query_params().get('portfolio_url'):
-    portfolio_name = st.sidebar.selectbox("Pick portfolio: ", ('explore', 'portfolio'))
-else:
-    portfolio_name = 'explore'
+        return portfolio
+    else:
+        url = st.experimental_get_query_params().get('portfolio_url')[0]
+        s = requests.get(url).content
+        return pd.read_csv(io.StringIO(s.decode('utf-8')), header=0, index_col=0)
 
-invest_per_asset = 1000
-# TODO Remove this hack and make portfolio format with original valuation
-if portfolio_name == 'portfolio':
-    invest_per_asset = 500
 
-base_investment = float(st.sidebar.slider('Investment CHF/asset: ', 100, 5000, invest_per_asset, 5))
-
-if portfolio_name == 'explore':
-    asset_list = fetch_asset_list()
-    monitoring = ('BTC', 'DOGE', 'XRP', 'ETH', 'LTC', 'DOT', 'SOL')
-    exploratory_assets = st.sidebar.multiselect('Select assets', asset_list, default=monitoring)
-    portfolio_open_date = st.sidebar.date_input('Portfolio opening date:')
-    portfolio = pd.DataFrame()
-    if len(exploratory_assets) == 0:
-        st.stop()
-    for asset in exploratory_assets:
-        instrument_name = f"{asset}-CHF"
-        quote = fetch_historical_quote(instrument_name, portfolio_open_date)
-        if float(quote[asset]['CHF']) == 0:
-            st.text(f"No historical data available for {asset}")
-            continue
-        portfolio = portfolio.append(
-            pd.DataFrame({'amount': base_investment / float(quote[asset]['CHF']), 'direction': 'long'},
-                         index=[instrument_name]))
-
-else:
-    url = st.experimental_get_query_params().get('portfolio_url')[0]
-    s = requests.get(url).content
-    portfolio = pd.read_csv(io.StringIO(s.decode('utf-8')), header=0, index_col=0)
-
-total = pd.DataFrame()
-for asset in portfolio.index:
+def valuate_asset(asset):
     quote = fetch_quote(asset)
     if 'code' in quote.keys():
         st.text(f"asset -> {asset} Not found")
-        continue
+        return
     asset_entry = portfolio.loc[portfolio.index == asset]
     quote_part = 'bid'
     if asset_entry['direction'][0] == 'long':
         quote_part = 'ask'
 
-    position_size = asset_entry['amount'][0] / invest_per_asset * base_investment
-    total[asset] = pd.Series(position_size * float(quote[quote_part]), name='value')
+    position_size = asset_entry['amount'][0]
+    return [asset, pd.Series(position_size * float(quote[quote_part]), name='value')]
 
-total = total.T
-total.columns = ['value']
-st.text(f"Portfolio current value in CHF: {'%.2f' % total.get('value').sum()}")
-portfolio_cost = portfolio.size / portfolio.columns.size * base_investment
-portfolio_value = total.get('value').sum()
-st.text(f"P&L: CHF {'%.2f' % (portfolio_value - portfolio_cost)}")
+
+def valuate_portfolio(portfolio):
+    total = pd.DataFrame()
+    for asset in portfolio.index:
+        asset, valuation = valuate_asset(asset)
+        total[asset] = valuation
+
+    total = total.T
+    total.columns = ['value']
+    return total
+
+
+st.title('Crypto portfolio valuation and exploration')
+
+if st.experimental_get_query_params().get('portfolio_url'):
+    portfolio_name = st.sidebar.selectbox("Pick portfolio: ", ('portfolio', 'explore'))
+else:
+    portfolio_name = 'explore'
+
+portfolio = build_portfolio()
+portfolio_cost = int(portfolio.get('value').sum())
+
+evaluated_portfolio = valuate_portfolio(portfolio)
+
+st.text(f"Portfolio current value in CHF: {'%.2f' % evaluated_portfolio.get('value').sum()}")
+
+portfolio_value = evaluated_portfolio.get('value').sum()
+st.text(f"P&L: CHF {'%.2f' % (portfolio_value - portfolio_cost)}" +
+        f"({'%.2f' % ((portfolio_value - portfolio_cost) / portfolio_cost * 100)}%)")
 
 st.text('Portfolio')
 st.dataframe(portfolio)
 st.text('Per asset in CHF')
-st.dataframe(total)
+st.dataframe(evaluated_portfolio)
